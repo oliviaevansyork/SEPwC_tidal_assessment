@@ -35,7 +35,7 @@ def read_tidal_data(filename):
 
     data = pd.read_csv(
         filename,
-        skiprows=skip
+        skiprows=skip,
         sep=r'\s+',
         header=None,
         names=['Cycle', 'Date', 'Time', 'Sea Level', 'Residual']
