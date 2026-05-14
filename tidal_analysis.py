@@ -46,11 +46,13 @@ def read_tidal_data(filename):
         data['Date'] + ' ' + data['Time'],
         format='%Y/%m/%d %H:%M:%S'
     )
+    data = data.set_index('datetime')
+    data.index.name = 'datetime'
 
     #Replace flag values (anything ending in M, N, or T) with NaN
     for col in ['Sea Level', 'Residual']:
         data[col] = data[col].replace(
-            to_replace=r' .*[MNT]$',
+            to_replace=r'.*[MNT]$',
             value=np.nan,
             regex=True
         )
@@ -67,19 +69,55 @@ def read_tidal_data(filename):
 
 def join_data(data1, data2):
     """ Join two tidal DataFrames and sort by datetime index."""
-    pass
+    
+    # check data frames have sea level columns before joining
+    if 'Sea Level' not in data1.columns or 'Sea Level' not in data2.columns:
+        return None
+    
+    combined = pd.concat([data1, data2])
+    combined = combined.sort_index()
+    return combined
+
 
 def extract_single_year_remove_mean(year, data):
     """Extract data for a single year and subtract the mean sea level."""
-    pass
+    year_data = data[data.index.year == int(year)].copy()
+    year_data['Sea Level'] = year_data['Sea Level'] - year_data['Sea Level'].mean()
+    return year_data
 
 def extract_section_remove_mean(start, end, data):
-    """Extract a data range of data and subtract the mean sea level."""
-    pass
+    """Extract a data range of data and subtract the mean sea level.
+    start and end are strings in YYYYMMDD format.
+    """
+    start_dt = pd.to_datetime(start, format='%Y%m%d')
+    end_dt = pd.to_datetime(end,format='%Y%m%d')
+
+    mask = (data.index >= start_dt) & (data.index <= end_dt)
+    section = data.loc[mask].copy()
+    section['Sea Level'] = section['Sea Level'] - section['Sea Level'].mean()
+    return section
 
 def tidal_analysis(data, constituents, start_datetime):
     """Calculate tidal amplitudes and phrases using uptide."""
-    pass
+    
+    #uptide data no NaN values
+    clean = data.dropna(subset=['Sea Level'])
+
+    tide = uptide.Tides(constituents)
+    tide.set_initial_time(start_datetime)
+
+    #convert index to seconds
+    seconds = np.array(
+        [(t - start_datetime).total_seconds()
+         for t in clean.index.to_pydatetime()]
+    )
+
+    amp, pha = tide.harmonic_analysis(
+        clean['Sea Level'].values,
+        seconds
+    )
+
+    return amp, pha
 
 def sea_level_rise(data):
     """calculate sea-level rise using linear regression."""
