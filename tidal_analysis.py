@@ -3,7 +3,6 @@ Tidal analysis
 Reads tidal gauge data, calculates tidal constituents and sea-level rise.
 """
 
-import sys
 import os
 import argparse
 import glob
@@ -18,11 +17,11 @@ import pytz
 
 def read_tidal_data(filename):
     """Read a single tidal data file and return a cleaned DataFrame."""
-    
+
     # Raise an error if the file doesn't exist
     if not os.path.exists(filename):
         raise FileNotFoundError(f"File not found: {filename}")
-    
+
     #skip rows that arent data
     with open(filename, 'r', encoding='utf-8') as f:
         lines = f.readlines()
@@ -64,16 +63,16 @@ def read_tidal_data(filename):
     data = data [['Time', 'Sea Level']]
 
     return data
-                 
+
 
 
 def join_data(data1, data2):
     """ Join two tidal DataFrames and sort by datetime index."""
-    
+
     # check data frames have sea level columns before joining
     if 'Sea Level' not in data1.columns or 'Sea Level' not in data2.columns:
         return None
-    
+
     combined = pd.concat([data1, data2])
     combined = combined.sort_index()
     return combined
@@ -90,7 +89,7 @@ def extract_section_remove_mean(start, end, data):
     start and end are strings in YYYYMMDD format.
     """
     start_dt = pd.to_datetime(start, format='%Y%m%d')
-    end_dt = pd.to_datetime(end,format='%Y%m%d')
+    end_dt = pd.to_datetime(end,format='%Y%m%d') + pd.Timedelta(days=1)
 
     mask = (data.index >= start_dt) & (data.index <= end_dt)
     section = data.loc[mask].copy()
@@ -99,33 +98,86 @@ def extract_section_remove_mean(start, end, data):
 
 def tidal_analysis(data, constituents, start_datetime):
     """Calculate tidal amplitudes and phrases using uptide."""
-    
+
     #uptide data no NaN values
     clean = data.dropna(subset=['Sea Level'])
 
     tide = uptide.Tides(constituents)
     tide.set_initial_time(start_datetime)
 
-    #convert index to seconds
+    #idex timestamps timezone-naive: utc so match start_datetime
+    tz = pytz.utc
     seconds = np.array(
-        [(t - start_datetime).total_seconds()
+        [(t.replace(tzinfo=tz) - start_datetime).total_seconds()
          for t in clean.index.to_pydatetime()]
     )
 
-    amp, pha = tide.harmonic_analysis(
-        clean['Sea Level'].values,
-        seconds
-    )
-
+    tide.fit(seconds, clean['Sea Level'].values)
+    amp = tide.amplitude
+    pha = tide.phase
     return amp, pha
 
 def sea_level_rise(data):
-    """calculate sea-level rise using linear regression."""
-    pass
+    """calculate sea-level rise using linear regression.
+    Returns slope in meters/day and p-value
+    """
+    clean = data.dropna(subset=['Sea Level'])
+
+    # Convert datetime index to numeric (days since 1970-01-01)
+    times = matplotlib.dates.date2num(clean.index.to_pydatetime())
+
+    slope, _, _, p_value, _ = scipy.stats.linregress(
+        times,
+        clean['Sea Level'].values
+    )
+
+    return slope, p_value
 
 def main(args_list=None):
     """Main entry point for the tidal analysis CLI."""
-    pass
 
-if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Tidal Analysis Tool")
+    parser.add_argument('-v', action='store_true', help='Print output to screen')
+    parser.add_argument('directory', type=str, help='directory of tidal data files')
+    args = parser.parse_args(args_list)
+
+    #find text files in given directory
+    files = sorted(glob.glob(os.path.join(args.directory, '*.txt')))
+
+    #read / join all data
+    all_data = None
+    for f in files:
+        year_data =read_tidal_data(f)
+        if all_data is None:
+            all_data = year_data
+        else:
+            all_data = join_data(all_data, year_data)
+
+    #sea level rise
+    slope, p_value = sea_level_rise(all_data)
+
+    #Tidal constituents using full dataset
+    tz = pytz.timezone("utc")
+    start_dt = all_data.index[0].to_pydatetime().replace(tzinfo=tz)
+    section = extract_section_remove_mean(
+        all_data.index[0].strftime('%Y%m%d'),
+        all_data.index[-1].strftime('%Y%m%d'),
+        all_data
+    )
+    amp, _ = tidal_analysis(section, ['M2','S2'], start_dt)
+
+    output = (
+        f"M2 amplitude: {amp[0]:.3f} m\n"
+        f"S2 amplitude: {amp[1]:.3f} m\n"
+        f"Sea level rise: {slope * 365:.6f} m/year\n"
+        f"p-value: {p_value:.3f}\n"
+    )
+
+    if args.v:
+        print(output)
+    else:
+        outfile = os.path.join(args.directory, 'tidal_analysis_output.txt')
+        with open(outfile, 'w', encoding='utf-8') as f:
+            f.write(output)
+
+
