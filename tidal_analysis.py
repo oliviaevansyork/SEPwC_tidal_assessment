@@ -146,7 +146,7 @@ def main(args_list=None):
     args = parser.parse_args(args_list)
 
     #find text files in given directory
-    files = sorted(glob.glob(os.path.join(args.directory, '*.txt')))
+    files = sorted(glob.glob(os.path.join(args.directory, '[0-9]*.txt')))
 
     #read / join all data
     all_data = None
