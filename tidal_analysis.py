@@ -6,7 +6,6 @@ Reads tidal gauge data, calculates tidal constituents and sea-level rise.
 import os
 import argparse
 import glob
-import datetime
 
 import numpy as np
 import pandas as pd
@@ -91,7 +90,7 @@ def extract_section_remove_mean(start, end, data):
     start_dt = pd.to_datetime(start, format='%Y%m%d')
     end_dt = pd.to_datetime(end,format='%Y%m%d') + pd.Timedelta(days=1)
 
-    mask = (data.index >= start_dt) & (data.index <= end_dt)
+    mask = (data.index >= start_dt) & (data.index < end_dt)
     section = data.loc[mask].copy()
     section['Sea Level'] = section['Sea Level'] - section['Sea Level'].mean()
     return section
@@ -112,9 +111,7 @@ def tidal_analysis(data, constituents, start_datetime):
          for t in clean.index.to_pydatetime()]
     )
 
-    tide.fit(seconds, clean['Sea Level'].values)
-    amp = tide.amplitude
-    pha = tide.phase
+    amp, pha = uptide.harmonic_analysis(tide, clean['Sea Level'].values, seconds)
     return amp, pha
 
 def sea_level_rise(data):
@@ -179,5 +176,3 @@ def main(args_list=None):
         outfile = os.path.join(args.directory, 'tidal_analysis_output.txt')
         with open(outfile, 'w', encoding='utf-8') as f:
             f.write(output)
-
-
