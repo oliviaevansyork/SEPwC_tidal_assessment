@@ -47,13 +47,19 @@ def read_tidal_data(filename):
     data = data.set_index('datetime')
     data.index.name = 'datetime'
 
-    #Replace flag values (anything ending in M, N, or T) with NaN
+    #Replace flag values
     for col in ['Sea Level', 'Residual']:
         data[col] = data[col].replace(
-            to_replace=r'.*[MNT]$',
+            to_replace=r'^\s*.*[MNT]\s*$',
             value=np.nan,
             regex=True
         )
+    #catch standalone flag letters
+    data['Sea Level'] = data['Sea Level']. replace(
+        to_replace=r'^\s*[MNT]\s*$',
+        value=np.nan,
+        regex=True
+    )
 
     #ensure sea level data is stored as a float
     data['Sea Level'] = pd.to_numeric(data['Sea Level'], errors='coerce')
