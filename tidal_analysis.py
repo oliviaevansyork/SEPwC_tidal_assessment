@@ -162,7 +162,15 @@ def main(args_list=None):
 
     #Tidal constituents using full dataset
     tz = pytz.timezone("utc")
-    start_dt = all_data.index[0].to_pydatetime().replace(tzinfo=tz)
+    start_dt = datetime.datetime(
+        all_data.index[0].year,
+        all_data.index[0].month,
+        all_data.index[0].day,
+        all_data.index[0].hour,
+        all_data.index[0].minute,
+        all_data.index[0].second,
+        tzinfo=tz
+    )
     section = extract_section_remove_mean(
         all_data.index[0].strftime('%Y%m%d'),
         all_data.index[-1].strftime('%Y%m%d'),
