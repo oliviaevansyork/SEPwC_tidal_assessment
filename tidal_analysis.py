@@ -141,7 +141,7 @@ def main(args_list=None):
     """Main entry point for the tidal analysis CLI."""
 
     parser = argparse.ArgumentParser(description="Tidal Analysis Tool")
-    parser.add_argument('-v', action='store_true', help='Print output to screen')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Print output to screen')
     parser.add_argument('directory', type=str, help='directory of tidal data files')
     args = parser.parse_args(args_list)
 
@@ -185,9 +185,12 @@ def main(args_list=None):
         f"p-value: {p_value:.3f}\n"
     )
 
-    if args.v:
-        print(output)
+    if args.verbose:
+        print(output, flush=True)
     else:
         outfile = os.path.join(args.directory, 'tidal_analysis_output.txt')
         with open(outfile, 'w', encoding='utf-8') as f:
             f.write(output)
+
+if __name__ == '__main__':
+    main()
