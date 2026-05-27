@@ -137,6 +137,43 @@ def sea_level_rise(data):
 
     return slope, p_value
 
+def get_longest_contiguous_data(data):
+    """ Find longest contiguous period with no missing sea level data.
+
+    Returns start and end datetime of longest of the longest gap-free stretch"""
+    # Boolean series: True where sea level is vaild
+    vaild =data['Sea Level'].notna()
+
+    longest_start = None
+    longest_end = None
+    longest_length = 0
+    current_start = None
+    current_length = 0
+
+    for timestamp, is_valid in vaild.items():
+        if is_valid:
+            #Start new streach if not already in one
+            if current_start is None:
+                current_start = timestamp
+            current_length += 1
+        else:
+            #end of a stretch -check if longest so far
+            if current_length > longest_length:
+                longest_length = current_length
+                longest_start = current_start
+                longest_end = data.index[data.index.get_loc(timestamp) -1]
+            current_start = None
+            current_length = 0
+
+    #Check final stretch in case data ends without NaN
+    if current_length > longest_length:
+        longest_start = current_start
+        longest_end = data.index[-1]
+
+    return longest_start, longest_end
+
+
+
 def main(args_list=None):
     """Main entry point for the tidal analysis CLI."""
 
@@ -178,11 +215,15 @@ def main(args_list=None):
     )
     amp, _ = tidal_analysis(section, ['M2','S2'], start_dt)
 
+    # find longest contiguous period of valid data
+    contiguous_start, contiguous_end = get_longest_contiguous_data(all_data)
+
     output = (
         f"M2 amplitude: {amp[0]:.3f} m\n"
         f"S2 amplitude: {amp[1]:.3f} m\n"
         f"Sea level rise: {slope * 365:.6f} m/year\n"
         f"p-value: {p_value:.3f}\n"
+        f"Longest contiguous period: {contiguous_start} to {contiguous_end}\n"
     )
 
     if args.verbose:
