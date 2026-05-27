@@ -198,7 +198,6 @@ def main(args_list=None):
     slope, p_value = sea_level_rise(all_data)
 
     #Tidal constituents using full dataset
-    tz = pytz.timezone("utc")
     start_dt = datetime.datetime(
         all_data.index[0].year,
         all_data.index[0].month,
@@ -206,7 +205,7 @@ def main(args_list=None):
         all_data.index[0].hour,
         all_data.index[0].minute,
         all_data.index[0].second,
-        tzinfo=tz
+        tzinfo=pytz.utc
     )
     section = extract_section_remove_mean(
         all_data.index[0].strftime('%Y%m%d'),
@@ -216,14 +215,14 @@ def main(args_list=None):
     amp, _ = tidal_analysis(section, ['M2','S2'], start_dt)
 
     # find longest contiguous period of valid data
-    contiguous_start, contiguous_end = get_longest_contiguous_data(all_data)
+    contiguous = get_longest_contiguous_data(all_data)
 
     output = (
         f"M2 amplitude: {amp[0]:.3f} m\n"
         f"S2 amplitude: {amp[1]:.3f} m\n"
         f"Sea level rise: {slope * 365:.6f} m/year\n"
         f"p-value: {p_value:.3f}\n"
-        f"Longest contiguous period: {contiguous_start} to {contiguous_end}\n"
+        f"Longest contiguous period: {contiguous[0]} to {contiguous[1]}\n"
     )
 
     if args.verbose:
