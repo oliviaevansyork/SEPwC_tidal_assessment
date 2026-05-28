@@ -22,7 +22,7 @@ def read_tidal_data(filename):
     if not os.path.exists(filename):
         raise FileNotFoundError(f"File not found: {filename}")
 
-    #skip rows that arent data
+    # Header lines start with letters; find first line starting with a digit
     with open(filename, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
@@ -40,7 +40,7 @@ def read_tidal_data(filename):
         names=['Cycle', 'Date', 'Time', 'Sea Level', 'Residual']
     )
 
-    #combine Date and time into a single datetime column, then set as index
+    # Combine Date and time into a single datetime column, then set as index
     data['datetime'] = pd.to_datetime(
         data['Date'] + ' ' + data['Time'],
         format='%Y/%m/%d %H:%M:%S'
@@ -48,38 +48,38 @@ def read_tidal_data(filename):
     data = data.set_index('datetime')
     data.index.name = 'datetime'
 
-    #Replace flag values
+    # Replace flag values
     for col in ['Sea Level', 'Residual']:
         data[col] = data[col].replace(
             to_replace=r'^\s*.*[MNT]\s*$',
             value=np.nan,
             regex=True
         )
-    #catch standalone flag letters
-    data['Sea Level'] = data['Sea Level']. replace(
+    # Catch standalone flag letters
+    data['Sea Level'] = data['Sea Level'].replace(
         to_replace=r'^\s*[MNT]\s*$',
         value=np.nan,
         regex=True
     )
 
-    #ensure sea level data is stored as a float
+    # Ensure sea level data is stored as a float
     data['Sea Level'] = pd.to_numeric(data['Sea Level'], errors='coerce')
 
-    #keep only needed columns
-    data = data [['Time', 'Sea Level']]
+    # Keep only needed columns
+    data = data[['Time', 'Sea Level']]
 
     return data
 
 
-
 def join_data(data1, data2):
-    """ Join two tidal DataFrames and sort by datetime index."""
+    """Join two tidal DataFrames and sort by datetime index."""
 
-    # check data frames have sea level columns before joining
+    # Check data frames have sea level columns before joining
     if 'Sea Level' not in data1.columns or 'Sea Level' not in data2.columns:
         return None
 
     combined = pd.concat([data1, data2])
+    # Sort ensures chronological order regardless of which year passed first
     combined = combined.sort_index()
     return combined
 
@@ -90,28 +90,32 @@ def extract_single_year_remove_mean(year, data):
     year_data['Sea Level'] = year_data['Sea Level'] - year_data['Sea Level'].mean()
     return year_data
 
+
 def extract_section_remove_mean(start, end, data):
-    """Extract a data range of data and subtract the mean sea level.
+    """
+    Extract a data range of data and subtract the mean sea level.
     start and end are strings in YYYYMMDD format.
     """
     start_dt = pd.to_datetime(start, format='%Y%m%d')
-    end_dt = pd.to_datetime(end,format='%Y%m%d') + pd.Timedelta(days=1)
+    # Add one day to make end date inclusive of the full final day
+    end_dt = pd.to_datetime(end, format='%Y%m%d') + pd.Timedelta(days=1)
 
     mask = (data.index >= start_dt) & (data.index < end_dt)
     section = data.loc[mask].copy()
     section['Sea Level'] = section['Sea Level'] - section['Sea Level'].mean()
     return section
 
-def tidal_analysis(data, constituents, start_datetime):
-    """Calculate tidal amplitudes and phrases using uptide."""
 
-    #uptide data no NaN values
+def tidal_analysis(data, constituents, start_datetime):
+    """Calculate tidal amplitudes and phases using uptide."""
+
+    # Uptide requires clean data - drop NaN rows before harmonic analysis
     clean = data.dropna(subset=['Sea Level'])
 
     tide = uptide.Tides(constituents)
     tide.set_initial_time(start_datetime)
 
-    #idex timestamps timezone-naive: utc so match start_datetime
+    # Index timestamps are timezone-naive: add UTC to match start_datetime
     tz = pytz.utc
     seconds = np.array(
         [(t.replace(tzinfo=tz) - start_datetime).total_seconds()
@@ -121,13 +125,15 @@ def tidal_analysis(data, constituents, start_datetime):
     amp, pha = uptide.harmonic_analysis(tide, clean['Sea Level'].values, seconds)
     return amp, pha
 
+
 def sea_level_rise(data):
-    """calculate sea-level rise using linear regression.
+    """
+    Calculate sea-level rise using linear regression.
     Returns slope in meters/day and p-value
     """
     clean = data.dropna(subset=['Sea Level'])
 
-    # Convert datetime index to numeric (days since 1970-01-01)
+    # Convert datetime index to float (days since 1970-01-01)
     times = matplotlib.dates.date2num(clean.index.to_pydatetime())
 
     slope, _, _, p_value, _ = scipy.stats.linregress(
@@ -137,12 +143,14 @@ def sea_level_rise(data):
 
     return slope, p_value
 
-def get_longest_contiguous_data(data):
-    """ Find longest contiguous period with no missing sea level data.
 
-    Returns start and end datetime of longest of the longest gap-free stretch"""
-    # Boolean series: True where sea level is vaild
-    vaild =data['Sea Level'].notna()
+def get_longest_contiguous_data(data):
+    """
+    Find longest contiguous period with no missing sea level data.
+    Returns start and end datetime of longest gap-free stretch
+    """
+    # Boolean series: True where sea level is valid
+    valid = data['Sea Level'].notna()
 
     longest_start = None
     longest_end = None
@@ -150,28 +158,27 @@ def get_longest_contiguous_data(data):
     current_start = None
     current_length = 0
 
-    for timestamp, is_valid in vaild.items():
+    for timestamp, is_valid in valid.items():
         if is_valid:
-            #Start new streach if not already in one
+            # Start new stretch if not already in one
             if current_start is None:
                 current_start = timestamp
             current_length += 1
         else:
-            #end of a stretch -check if longest so far
+            # End of a stretch - check if longest so far
             if current_length > longest_length:
                 longest_length = current_length
                 longest_start = current_start
-                longest_end = data.index[data.index.get_loc(timestamp) -1]
+                longest_end = data.index[data.index.get_loc(timestamp) - 1]
             current_start = None
             current_length = 0
 
-    #Check final stretch in case data ends without NaN
+    # Check final stretch in case data ends without NaN
     if current_length > longest_length:
         longest_start = current_start
         longest_end = data.index[-1]
 
     return longest_start, longest_end
-
 
 
 def main(args_list=None):
@@ -182,22 +189,22 @@ def main(args_list=None):
     parser.add_argument('directory', type=str, help='directory of tidal data files')
     args = parser.parse_args(args_list)
 
-    #find text files in given directory
+    # Find text files in given directory
     files = sorted(glob.glob(os.path.join(args.directory, '[0-9]*.txt')))
 
-    #read / join all data
+    # Read / join all data
     all_data = None
     for f in files:
-        year_data =read_tidal_data(f)
+        year_data = read_tidal_data(f)
         if all_data is None:
             all_data = year_data
         else:
             all_data = join_data(all_data, year_data)
 
-    #sea level rise
+    # Sea level rise
     slope, p_value = sea_level_rise(all_data)
 
-    #Tidal constituents using full dataset
+    # Tidal constituents using full dataset
     start_dt = datetime.datetime(
         all_data.index[0].year,
         all_data.index[0].month,
@@ -214,7 +221,7 @@ def main(args_list=None):
     )
     amp, _ = tidal_analysis(section, ['M2','S2'], start_dt)
 
-    # find longest contiguous period of valid data
+    # Find longest contiguous period of valid data
     contiguous = get_longest_contiguous_data(all_data)
 
     output = (
